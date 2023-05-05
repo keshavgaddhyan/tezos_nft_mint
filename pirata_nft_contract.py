@@ -1,6 +1,10 @@
 import smartpy as sp
 
+
+#########
 # Types #
+#########
+
 
 t_operator_permission = sp.TRecord(
     owner=sp.TAddress, operator=sp.TAddress, token_id=sp.TNat
@@ -38,7 +42,10 @@ t_balance_of_params = sp.TRecord(
     requests=sp.TList(t_balance_of_request),
 ).layout(("requests", "callback"))
 
+
+############
 # Policies #
+############
 
 class OwnerOrOperatorTransfer:
     """(Transfer Policy) Only owner and operators can transfer tokens.
@@ -68,8 +75,11 @@ class OwnerOrOperatorTransfer:
 
     def is_operator(self, contract, operator_permission):
         return contract.data.operators.contains(operator_permission)
-    
+
+##########
 # Common #
+##########
+
 
 class Common(sp.Contract):
     """Common logic between Fa2Nft, Fa2Fungible and Fa2SingleAsset."""
@@ -218,7 +228,11 @@ class Common(sp.Contract):
         sp.verify(self.is_defined(params.token_id), "FA2_TOKEN_UNDEFINED")
         sp.result(sp.set_type_expr(self.supply_(params.token_id), sp.TNat))
 
+
+################
 # Base classes #
+################
+
 
 class Fa2Nft(Common):
     """Base class for a FA2 NFT contract.
@@ -277,7 +291,11 @@ class Fa2Nft(Common):
         # Do the transfer
         self.data.ledger[tx.token_id] = tx.to_
 
+
+##########
 # Mixins #
+##########
+
 
 class Admin:
     """(Mixin) Provide the basics for having an administrator in the contract.
@@ -312,7 +330,11 @@ class ChangeMetadata:
         sp.verify(self.is_administrator(sp.sender), message="FA2_NOT_ADMIN")
         self.data.metadata = metadata
 
+
+###########
 # Helpers #
+###########
+
 
 def make_metadata(symbol, name, decimals):
     """Helper function to build metadata JSON bytes values."""
@@ -324,7 +346,12 @@ def make_metadata(symbol, name, decimals):
         }
     )
 
+
+
+###########
 # CODE #
+###########
+
 
 class Nft(Fa2Nft, Admin, ChangeMetadata):
     def __init__(self, admin, **kwargs):
@@ -339,19 +366,19 @@ class Nft(Fa2Nft, Admin, ChangeMetadata):
         self.data.token_metadata[token_id] = sp.record(
             token_id=token_id, token_info=token_info
         )
-
         self.data.last_token_id += 1
         
     @sp.offchain_view()
     def get_usage(self, token_id):
-        token_info = self.data.token_metadata[token_id].token_info
-        usage = sp.unpack(token_info["usage"], sp.TIntOrNat).open_some()
+        usage = self.data.token_metadata.get(token_id, message="NFT_TOKEN_UNDEFINED").token_info["usage"]
+        usage = sp.unpack(usage, sp.TInt).open_some(message = sp.result(sp.unpack(usage, sp.TInt)))
         sp.result(usage)
     
     @sp.entry_point
     def update_usage(self, token_id):
+        sp.verify(self.is_administrator(sp.sender), "FA2_NOT_ADMIN")
         token_info = self.data.token_metadata[token_id].token_info
-        usage = sp.unpack(token_info["usage"], sp.TIntOrNat).open_some()
+        usage = sp.unpack(token_info["usage"], sp.TInt).open_some()
         usage +=1
         self.data.token_metadata[token_id].token_info["usage"] = sp.pack(usage)
     
@@ -360,7 +387,7 @@ class Nft(Fa2Nft, Admin, ChangeMetadata):
     def get_owner(self, token_id):
          sp.result(self.data.ledger[token_id])
 
-# TEST #
+sp.add_compilation_target("Pirata Contract",Nft(admin=sp.address("tz1gAnLW5sqkT8qn1sY8pzP6NGAGkbhm8fG1"), metadata=sp.utils.metadata_of_url("ipfs://QmcxagWpdeVHmpJD1ePz7vKryemWooiDJ6TPKuxcCpNAs7")))
 
 @sp.add_test(name="NFT TEST")
 def test():
@@ -383,7 +410,7 @@ def test():
     }
     
     nft_pirata = Nft(admin=abby, metadata=sp.utils.metadata_of_url(
-        "ipfs://QmRbmXcd2yfNVdgHL7oYWS2yd3tztr2NZiqP2LFuw3voPW"), metadata_base=metadata_base)
+        "ipfs://QmTKHffrVCKda3WKs1qyyJna7EjHM5Wdzf3LJVeejgaz61"), metadata_base=metadata_base)
     
     sc += nft_pirata
 
@@ -427,13 +454,8 @@ def test():
     sc.show(nft_pirata.get_owner(0))
     
     sc.h2("Update usage")
-    nft_pirata.update_usage(0).run(sender=tanoy)
+    nft_pirata.update_usage(0).run(sender=abby)
 
     sc.h2("Check usage")
     sc.verify(nft_pirata.get_usage(0) == 1)
     sc.show(nft_pirata.get_usage(0))
-
-
-# DEPLOYMENT #
-
-# sp.add_compilation_target("Pirata Contract",Nft(admin=sp.address("tz1gAnLW5sqkT8qn1sY8pzP6NGAGkbhm8fG1"), metadata=sp.utils.metadata_of_url("ipfs://QmRbmXcd2yfNVdgHL7oYWS2yd3tztr2NZiqP2LFuw3voPW")))
