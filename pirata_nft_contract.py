@@ -371,7 +371,7 @@ class Nft(Fa2Nft, Admin, ChangeMetadata):
     @sp.offchain_view()
     def get_usage(self, token_id):
         usage = self.data.token_metadata.get(token_id, message="NFT_TOKEN_UNDEFINED").token_info["usage"]
-        usage = sp.unpack(usage, sp.TInt).open_some(message = sp.result(sp.unpack(usage, sp.TInt)))
+        usage = sp.unpack(usage, sp.TInt).open_some()
         sp.result(usage)
     
     @sp.entry_point
@@ -386,14 +386,33 @@ class Nft(Fa2Nft, Admin, ChangeMetadata):
     @sp.offchain_view()
     def get_owner(self, token_id):
          sp.result(self.data.ledger[token_id])
+        
+    @sp.entrypoint
+    def burn(self, token_id):
+        """
+        Burning an nft destroys its metadata.
+        """
+        sp.verify(self.is_administrator(sp.sender), "FA2_NOT_ADMIN")
+        sp.verify(self.is_defined(token_id), "FA2_TOKEN_UNDEFINED")
+        
+        del self.data.ledger[token_id]
+        del self.data.token_metadata[token_id]
 
-sp.add_compilation_target("Pirata Contract",Nft(admin=sp.address("tz1gAnLW5sqkT8qn1sY8pzP6NGAGkbhm8fG1"), metadata=sp.utils.metadata_of_url("ipfs://QmcxagWpdeVHmpJD1ePz7vKryemWooiDJ6TPKuxcCpNAs7")))
+    @sp.offchain_view()
+    def get_metadata(self, token_id):
+        sp.verify(self.is_defined(token_id), "FA2_TOKEN_UNDEFINED")
+        token_info = self.data.token_metadata[token_id].token_info
+        sp.result(token_info[''])
+
+
+sp.add_compilation_target("Pirata Contract",Nft(admin=sp.address("tz1gAnLW5sqkT8qn1sY8pzP6NGAGkbhm8fG1"), metadata=sp.utils.metadata_of_url("ipfs://QmNQ2o6LciXSVDbsnB7sPLGgYPWrEMwQpwZnMhV9BMux2A")))
 
 @sp.add_test(name="NFT TEST")
 def test():
     sc =  sp.test_scenario()
     tanoy=sp.address("tz1Vf4cQ6dcywPXVY6QZnsMELEzXNSX9yMxL")
     abby=sp.address("tz1PaBo1wAwoSipwW2ubbotpywAZaPuC3oQ9")
+    pirata=sp.address("tz1gAnLW5sqkT8qn1sY8pzP6NGAGkbhm8fG1")
 
     metadata_base = {
     "name": "NFT Contract",
@@ -409,7 +428,7 @@ def test():
     "permissions": {"receiver": "owner-no-hook", "sender": "owner-no-hook"},
     }
     
-    nft_pirata = Nft(admin=abby, metadata=sp.utils.metadata_of_url(
+    nft_pirata = Nft(admin=pirata, metadata=sp.utils.metadata_of_url(
         "ipfs://QmTKHffrVCKda3WKs1qyyJna7EjHM5Wdzf3LJVeejgaz61"), metadata_base=metadata_base)
     
     sc += nft_pirata
@@ -424,7 +443,7 @@ def test():
             "": sp.utils.bytes_of_string("ipfs://QmTKHffrVCKda3WKs1qyyJna7EjHM5Wdzf3LJVeejgaz61"),
             "usage": sp.pack(0)
         })
-    ).run(sender=abby)
+    ).run(sender=pirata)
     sc.verify(nft_pirata.data.ledger[0] == tanoy)
 
     sc.h2("Transfer")
@@ -454,8 +473,17 @@ def test():
     sc.show(nft_pirata.get_owner(0))
     
     sc.h2("Update usage")
-    nft_pirata.update_usage(0).run(sender=abby)
+    nft_pirata.update_usage(0).run(sender=pirata)
 
     sc.h2("Check usage")
     sc.verify(nft_pirata.get_usage(0) == 1)
     sc.show(nft_pirata.get_usage(0))
+
+    sc.h2("get metadata")
+    sc.show(nft_pirata.get_metadata(sp.nat(0)))
+
+    sc.h2("Burn NFT")
+    nft_pirata.burn(sp.nat(0)).run(sender=pirata)
+    sc.verify(nft_pirata.data.ledger.contains(0) == False)
+
+
